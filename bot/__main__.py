@@ -52,7 +52,10 @@ Type /{BotCommands.HelpCommand} to get a list of available commands
     buttons.buildbutton("Repo", "https://github.com/breakdowns/slam-mirrorbot")
     buttons.buildbutton("Channel", "https://t.me/SlamMirrorUpdates")
     reply_markup = InlineKeyboardMarkup(buttons.build_menu(2))
-    LOGGER.info('UID: {} - UN: {} - MSG: {}'.format(update.message.chat.id, update.message.chat.username, update.message.text))
+    LOGGER.info(
+        f'UID: {update.message.chat.id} - UN: {update.message.chat.username} - MSG: {update.message.text}'
+    )
+
     uptime = get_readable_time((time.time() - botStartTime))
     if CustomFilters.authorized_user(update) or CustomFilters.authorized_chat(update):
         if update.message.chat.type == "private" :

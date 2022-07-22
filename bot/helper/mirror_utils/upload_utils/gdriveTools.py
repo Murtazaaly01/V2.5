@@ -177,7 +177,7 @@ class GoogleDriveHelper:
         try:
             self.typee = file_metadata['mimeType']
         except:
-            self.typee = 'File' 
+            self.typee = 'File'
         if parent_id is not None:
             file_metadata['parents'] = [parent_id]
 
@@ -203,24 +203,24 @@ class GoogleDriveHelper:
         drive_file = self.__service.files().create(supportsTeamDrives=True,
                                                    body=file_metadata, media_body=media_body)
         response = None
-        while response is None:
-            if self.is_cancelled:
-                break
+        while response is None and not self.is_cancelled:
             try:
                 self.status, response = drive_file.next_chunk()
             except HttpError as err:
                 if err.resp.get('content-type', '').startswith('application/json'):
                     reason = json.loads(err.content).get('error').get('errors')[0].get('reason')
-                    if reason == 'userRateLimitExceeded' or reason == 'dailyLimitExceeded':
-                        if USE_SERVICE_ACCOUNTS:
-                            self.switchServiceAccount()
-                            LOGGER.info(f"Got: {reason}, Trying Again.")
-                            return self.upload_file(file_path, file_name, mime_type, parent_id)
-                        else:
-                            self.is_cancelled = True
-                            LOGGER.info(f"Got: {reason}")
-                            raise err
+                    if reason not in [
+                        'userRateLimitExceeded',
+                        'dailyLimitExceeded',
+                    ]:
+                        raise err
+                    if USE_SERVICE_ACCOUNTS:
+                        self.switchServiceAccount()
+                        LOGGER.info(f"Got: {reason}, Trying Again.")
+                        return self.upload_file(file_path, file_name, mime_type, parent_id)
                     else:
+                        self.is_cancelled = True
+                        LOGGER.info(f"Got: {reason}")
                         raise err
         if self.is_cancelled:
             return
@@ -242,7 +242,7 @@ class GoogleDriveHelper:
         file_dir = f"{DOWNLOAD_DIR}{self.__listener.message.message_id}"
         file_path = f"{file_dir}/{file_name}"
         size = get_readable_file_size(get_path_size(file_path))
-        LOGGER.info("Uploading File: " + file_path)
+        LOGGER.info(f"Uploading File: {file_path}")
         self.updater = setInterval(self.update_interval, self._on_upload_progress)
         if os.path.isfile(file_path):
             try:
@@ -252,7 +252,7 @@ class GoogleDriveHelper:
                     return
                 if link is None:
                     raise Exception('Upload has been manually cancelled')
-                LOGGER.info("Uploaded To G-Drive: " + file_path)
+                LOGGER.info(f"Uploaded To G-Drive: {file_path}")
             except Exception as e:
                 if isinstance(e, RetryError):
                     LOGGER.info(f"Total Attempts: {e.last_attempt.attempt_number}")
@@ -278,7 +278,7 @@ class GoogleDriveHelper:
                     msg = self.deletefile(link)
                     LOGGER.info(f"{msg}")
                     return
-                LOGGER.info("Uploaded To G-Drive: " + file_name)
+                LOGGER.info(f"Uploaded To G-Drive: {file_name}")
             except Exception as e:
                 if isinstance(e, RetryError):
                     LOGGER.info(f"Total Attempts: {e.last_attempt.attempt_number}")
@@ -306,12 +306,16 @@ class GoogleDriveHelper:
         }
 
         try:
-            res = self.__service.files().copy(supportsAllDrives=True,fileId=file_id,body=body).execute()
-            return res
+            return (
+                self.__service.files()
+                .copy(supportsAllDrives=True, fileId=file_id, body=body)
+                .execute()
+            )
+
         except HttpError as err:
             if err.resp.get('content-type', '').startswith('application/json'):
                 reason = json.loads(err.content).get('error').get('errors')[0].get('reason')
-                if reason == 'userRateLimitExceeded' or reason == 'dailyLimitExceeded':
+                if reason in ['userRateLimitExceeded', 'dailyLimitExceeded']:
                     if USE_SERVICE_ACCOUNTS:
                         if self.sa_count == self.service_account_count:
                             self.is_cancelled = True
@@ -346,8 +350,7 @@ class GoogleDriveHelper:
                                                    pageSize=200,
                                                    fields='nextPageToken, files(id, name, mimeType,size)', corpora='allDrives', orderBy='folder, name',
                                                    pageToken=page_token).execute()
-            for file in response.get('files', []):
-                files.append(file)
+            files.extend(iter(response.get('files', [])))
             page_token = response.get('nextPageToken', None)
             if page_token is None:
                 break
@@ -396,12 +399,6 @@ class GoogleDriveHelper:
                         buttons.buildbutton("⚡ Index Link", siurl)
                     else:
                         buttons.buildbutton("⚡ Index Link", url)
-                if BUTTON_FOUR_NAME is not None and BUTTON_FOUR_URL is not None:
-                    buttons.buildbutton(f"{BUTTON_FOUR_NAME}", f"{BUTTON_FOUR_URL}")
-                if BUTTON_FIVE_NAME is not None and BUTTON_FIVE_URL is not None:
-                    buttons.buildbutton(f"{BUTTON_FIVE_NAME}", f"{BUTTON_FIVE_URL}")
-                if BUTTON_SIX_NAME is not None and BUTTON_SIX_URL is not None:
-                    buttons.buildbutton(f"{BUTTON_SIX_NAME}", f"{BUTTON_SIX_URL}")
             else:
                 file = self.copyFile(meta.get('id'), parent_id)
                 msg += f'<b>Filename: </b><code>{file.get("name")}</code>'
@@ -415,7 +412,7 @@ class GoogleDriveHelper:
                 try:
                     typeee = file.get('mimeType')
                 except:
-                    typeee = 'File' 
+                    typeee = 'File'
                 try:
                     msg += f'\n<b>Size: </b><code>{get_readable_file_size(int(meta.get("size")))}</code>'
                     msg += f'\n<b>Type: </b><code>{typeee}</code>'
@@ -435,21 +432,21 @@ class GoogleDriveHelper:
                         buttons.buildbutton("⚡ Index Link", url)
                         if VIEW_LINK:
                             buttons.buildbutton("🌐 View Link", urls)
-                if BUTTON_FOUR_NAME is not None and BUTTON_FOUR_URL is not None:
-                    buttons.buildbutton(f"{BUTTON_FOUR_NAME}", f"{BUTTON_FOUR_URL}")
-                if BUTTON_FIVE_NAME is not None and BUTTON_FIVE_URL is not None:
-                    buttons.buildbutton(f"{BUTTON_FIVE_NAME}", f"{BUTTON_FIVE_URL}")
-                if BUTTON_SIX_NAME is not None and BUTTON_SIX_URL is not None:
-                    buttons.buildbutton(f"{BUTTON_SIX_NAME}", f"{BUTTON_SIX_URL}")
+            if BUTTON_FOUR_NAME is not None and BUTTON_FOUR_URL is not None:
+                buttons.buildbutton(f"{BUTTON_FOUR_NAME}", f"{BUTTON_FOUR_URL}")
+            if BUTTON_FIVE_NAME is not None and BUTTON_FIVE_URL is not None:
+                buttons.buildbutton(f"{BUTTON_FIVE_NAME}", f"{BUTTON_FIVE_URL}")
+            if BUTTON_SIX_NAME is not None and BUTTON_SIX_URL is not None:
+                buttons.buildbutton(f"{BUTTON_SIX_NAME}", f"{BUTTON_SIX_URL}")
         except Exception as err:
             if isinstance(err, RetryError):
                 LOGGER.info(f"Total Attempts: {err.last_attempt.attempt_number}")
                 err = err.last_attempt.exception()
             err = str(err).replace('>', '').replace('<', '')
             LOGGER.error(err)
-            if "User rate limit exceeded" in str(err):
+            if "User rate limit exceeded" in err:
                 msg = "User rate limit exceeded."
-            elif "File not found" in str(err):
+            elif "File not found" in err:
                 msg = "File not found."
             else:
                 msg = f"Error.\n{err}"
@@ -492,7 +489,10 @@ class GoogleDriveHelper:
         file_id = file.get("id")
         if not IS_TEAM_DRIVE:
             self.__set_permission(file_id)
-        LOGGER.info("Created G-Drive Folder:\nName: {}\nID: {} ".format(file.get("name"), file_id))
+        LOGGER.info(
+            f'Created G-Drive Folder:\nName: {file.get("name")}\nID: {file_id} '
+        )
+
         return file_id
 
     def upload_dir(self, input_directory, parent_id):
@@ -582,84 +582,82 @@ class GoogleDriveHelper:
                                                fields='files(id, name, mimeType, size)',
                                                orderBy='name asc').execute()
         content_count = 0
-        if response["files"]:
-            msg += f'<h4>{len(response["files"])} Results: {fileName}</h4><br><br>'
-            for file in response.get('files', []):
-                if file.get('mimeType') == "application/vnd.google-apps.folder":  # Detect Whether Current Entity is a Folder or File.
-                    furl = f"https://drive.google.com/drive/folders/{file.get('id')}"
-                    msg += f"📁 <code>{file.get('name')}<br>(folder)</code><br>"
-                    if SHORTENER is not None and SHORTENER_API is not None:
-                        sfurl = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={furl}&format=text').text
-                        msg += f"<b><a href={sfurl}>Drive Link</a></b>"
-                    else:
-                        msg += f"<b><a href={furl}>Drive Link</a></b>"
-                    if INDEX_URL is not None:
-                        url_path = requests.utils.quote(f'{file.get("name")}')
-                        url = f'{INDEX_URL}/{url_path}/'
-                        if SHORTENER is not None and SHORTENER_API is not None:
-                            siurl = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={url}&format=text').text
-                            msg += f' <b>| <a href="{siurl}">Index Link</a></b>'
-                        else:
-                            msg += f' <b>| <a href="{url}">Index Link</a></b>'
-                elif file.get('mimeType') == 'application/vnd.google-apps.shortcut':
-                    msg += f"⁍<a href='https://drive.google.com/drive/folders/{file.get('id')}'>{file.get('name')}" \
-                        f"</a> (shortcut)"
-                    # Excluded index link as indexes cant download or open these shortcuts
-                else:
-                    furl = f"https://drive.google.com/uc?id={file.get('id')}&export=download"
-                    msg += f"📄 <code>{file.get('name')}<br>({get_readable_file_size(int(file.get('size')))})</code><br>"
-                    if SHORTENER is not None and SHORTENER_API is not None:
-                        sfurl = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={furl}&format=text').text
-                        msg += f"<b><a href={sfurl}>Drive Link</a></b>"
-                    else:
-                        msg += f"<b><a href={furl}>Drive Link</a></b>"
-                    if INDEX_URL is not None:
-                        url_path = requests.utils.quote(f'{file.get("name")}')
-                        url = f'{INDEX_URL}/{url_path}'
-                        urls = f'{INDEX_URL}/{url_path}?a=view'
-                        if SHORTENER is not None and SHORTENER_API is not None:
-                            siurl = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={url}&format=text').text
-                            siurls = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={urls}&format=text').text
-                            msg += f' <b>| <a href="{siurl}">Index Link</a></b>'
-                            if VIEW_LINK:
-                                msg += f' <b>| <a href="{siurls}">View Link</a></b>'
-                        else:
-                            msg += f' <b>| <a href="{url}">Index Link</a></b>'
-                            if VIEW_LINK:
-                                msg += f' <b>| <a href="{urls}">View Link</a></b>'
-                msg += '<br><br>'
-                content_count += 1
-                if content_count == TELEGRAPHLIMIT :
-                    self.telegraph_content.append(msg)
-                    msg = ""
-                    content_count = 0
-                    
-            if msg != '':
-                self.telegraph_content.append(msg)
-
-            if len(self.telegraph_content) == 0:
-                return "No Result Found ❌", None
-
-            for content in self.telegraph_content :
-                self.path.append(Telegraph(access_token=telegraph_token).create_page(
-                                                        title = 'Slam Mirrorbot Search',
-                                                        author_name='Slam Mirrorbot',
-                                                        author_url='https://github.com/breakdowns/slam-mirrorbot',
-                                                        html_content=content
-                                                        )['path'])
-
-            self.num_of_path = len(self.path)
-            if self.num_of_path > 1:
-                self.edit_telegraph()
-
-            msg = f"<b>Found <code>{len(response['files'])}</code> results for <code>{fileName}</code></b>"
-            buttons = button_build.ButtonMaker()   
-            buttons.buildbutton("🔎 VIEW", f"https://telegra.ph/{self.path[0]}")
-
-            return msg, InlineKeyboardMarkup(buttons.build_menu(1))
-
-        else :
+        if not response["files"]:
             return '', ''
+        msg += f'<h4>{len(response["files"])} Results: {fileName}</h4><br><br>'
+        for file in response.get('files', []):
+            if file.get('mimeType') == "application/vnd.google-apps.folder":  # Detect Whether Current Entity is a Folder or File.
+                furl = f"https://drive.google.com/drive/folders/{file.get('id')}"
+                msg += f"📁 <code>{file.get('name')}<br>(folder)</code><br>"
+                if SHORTENER is not None and SHORTENER_API is not None:
+                    sfurl = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={furl}&format=text').text
+                    msg += f"<b><a href={sfurl}>Drive Link</a></b>"
+                else:
+                    msg += f"<b><a href={furl}>Drive Link</a></b>"
+                if INDEX_URL is not None:
+                    url_path = requests.utils.quote(f'{file.get("name")}')
+                    url = f'{INDEX_URL}/{url_path}/'
+                    if SHORTENER is not None and SHORTENER_API is not None:
+                        siurl = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={url}&format=text').text
+                        msg += f' <b>| <a href="{siurl}">Index Link</a></b>'
+                    else:
+                        msg += f' <b>| <a href="{url}">Index Link</a></b>'
+            elif file.get('mimeType') == 'application/vnd.google-apps.shortcut':
+                msg += f"⁍<a href='https://drive.google.com/drive/folders/{file.get('id')}'>{file.get('name')}" \
+                    f"</a> (shortcut)"
+                # Excluded index link as indexes cant download or open these shortcuts
+            else:
+                furl = f"https://drive.google.com/uc?id={file.get('id')}&export=download"
+                msg += f"📄 <code>{file.get('name')}<br>({get_readable_file_size(int(file.get('size')))})</code><br>"
+                if SHORTENER is not None and SHORTENER_API is not None:
+                    sfurl = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={furl}&format=text').text
+                    msg += f"<b><a href={sfurl}>Drive Link</a></b>"
+                else:
+                    msg += f"<b><a href={furl}>Drive Link</a></b>"
+                if INDEX_URL is not None:
+                    url_path = requests.utils.quote(f'{file.get("name")}')
+                    url = f'{INDEX_URL}/{url_path}'
+                    urls = f'{INDEX_URL}/{url_path}?a=view'
+                    if SHORTENER is not None and SHORTENER_API is not None:
+                        siurl = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={url}&format=text').text
+                        siurls = requests.get(f'https://{SHORTENER}/api?api={SHORTENER_API}&url={urls}&format=text').text
+                        msg += f' <b>| <a href="{siurl}">Index Link</a></b>'
+                        if VIEW_LINK:
+                            msg += f' <b>| <a href="{siurls}">View Link</a></b>'
+                    else:
+                        msg += f' <b>| <a href="{url}">Index Link</a></b>'
+                        if VIEW_LINK:
+                            msg += f' <b>| <a href="{urls}">View Link</a></b>'
+            msg += '<br><br>'
+            content_count += 1
+            if content_count == TELEGRAPHLIMIT :
+                self.telegraph_content.append(msg)
+                msg = ""
+                content_count = 0
+
+        if msg != '':
+            self.telegraph_content.append(msg)
+
+        if len(self.telegraph_content) == 0:
+            return "No Result Found ❌", None
+
+        for content in self.telegraph_content :
+            self.path.append(Telegraph(access_token=telegraph_token).create_page(
+                                                    title = 'Slam Mirrorbot Search',
+                                                    author_name='Slam Mirrorbot',
+                                                    author_url='https://github.com/breakdowns/slam-mirrorbot',
+                                                    html_content=content
+                                                    )['path'])
+
+        self.num_of_path = len(self.path)
+        if self.num_of_path > 1:
+            self.edit_telegraph()
+
+        msg = f"<b>Found <code>{len(response['files'])}</code> results for <code>{fileName}</code></b>"
+        buttons = button_build.ButtonMaker()
+        buttons.buildbutton("🔎 VIEW", f"https://telegra.ph/{self.path[0]}")
+
+        return msg, InlineKeyboardMarkup(buttons.build_menu(1))
 
     def count(self, link):
         try:
@@ -698,10 +696,7 @@ class GoogleDriveHelper:
         except Exception as err:
             err = str(err).replace('>', '').replace('<', '')
             LOGGER.error(err)
-            if "File not found" in str(err):
-                msg = "File not found."
-            else:
-                msg = f"Error.\n{err}"
+            msg = "File not found." if "File not found" in err else f"Error.\n{err}"
             return msg
         return msg
 
@@ -749,10 +744,7 @@ class GoogleDriveHelper:
         except Exception as err:
             err = str(err).replace('>', '').replace('<', '')
             LOGGER.error(err)
-            if "File not found" in str(err):
-                msg = "File not found."
-            else:
-                msg = f"Error.\n{err}"
+            msg = "File not found." if "File not found" in err else f"Error.\n{err}"
             return msg, "", "", ""
         return "", clonesize, name, files
 
@@ -773,7 +765,7 @@ class GoogleDriveHelper:
         except Exception as err:
             err = str(err).replace('>', '').replace('<', '')
             LOGGER.error(err)
-            if "downloadQuotaExceeded" in str(err):
+            if "downloadQuotaExceeded" in err:
                 err = "Download Quota Exceeded."
             self.__listener.onDownloadError(err)
             return
@@ -786,7 +778,7 @@ class GoogleDriveHelper:
     def download_folder(self, folder_id, path, folder_name):
         if not os.path.exists(path + folder_name):
             os.makedirs(path + folder_name)
-        path += folder_name + '/'
+        path += f'{folder_name}/'
         result = []
         page_token = None
         while True:
@@ -820,10 +812,10 @@ class GoogleDriveHelper:
 
     def download_file(self, file_id, path, filename, mime_type):
         request = self.__service.files().get_media(fileId=file_id)
-        fh = io.FileIO('{}{}'.format(path, filename), 'wb')
+        fh = io.FileIO(f'{path}{filename}', 'wb')
         downloader = MediaIoBaseDownload(fh, request, chunksize = 65 * 1024 * 1024)
         done = False
-        while done is False:
+        while not done:
             if self.is_cancelled:
                 fh.close()
                 break
@@ -832,20 +824,22 @@ class GoogleDriveHelper:
             except HttpError as err:
                 if err.resp.get('content-type', '').startswith('application/json'):
                     reason = json.loads(err.content).get('error').get('errors')[0].get('reason')
-                    if reason == 'downloadQuotaExceeded' or reason == 'dailyLimitExceeded':
-                        if USE_SERVICE_ACCOUNTS:
-                            if self.sa_count == self.service_account_count:
-                                self.is_cancelled = True
-                                raise err
-                            else:
-                                self.switchServiceAccount()
-                                LOGGER.info(f"Got: {reason}, Trying Again...")
-                                return self.download_file(file_id, path, filename, mime_type)
-                        else:
+                    if reason not in [
+                        'downloadQuotaExceeded',
+                        'dailyLimitExceeded',
+                    ]:
+                        raise err
+                    if USE_SERVICE_ACCOUNTS:
+                        if self.sa_count == self.service_account_count:
                             self.is_cancelled = True
-                            LOGGER.info(f"Got: {reason}")
                             raise err
+                        else:
+                            self.switchServiceAccount()
+                            LOGGER.info(f"Got: {reason}, Trying Again...")
+                            return self.download_file(file_id, path, filename, mime_type)
                     else:
+                        self.is_cancelled = True
+                        LOGGER.info(f"Got: {reason}")
                         raise err
         self._file_downloaded_bytes = 0
 
